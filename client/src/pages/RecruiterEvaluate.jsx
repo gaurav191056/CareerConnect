@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API_URL = "http://localhost:5001";
+const API_URL = "https://careerconnect-api-nxj8.onrender.com";
 
 function RecruiterEvaluate({ jobId }) {
     const [data, setData] = useState(null);

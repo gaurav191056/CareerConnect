@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const API_URL = "http://localhost:5001/api";
+const API_URL = "https://careerconnect-api-nxj8.onrender.com/api";
 
 const EMPTY_FORM = {
   title: "",
