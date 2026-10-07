@@ -16,3 +16,6 @@ pnpm-debug.log*
 server/uploads/*
 !server/uploads/.gitkeep
 careerconnect_backup.sql
+
+# Temporary TiDB import files
+careerconnect_tidb*.sql
