@@ -1,5 +1,101 @@
 const pool = require("../config/db");
 
+// Normalize common branch abbreviations and full names before comparing.
+// CE intentionally means Computer Engineering (not Civil Engineering).
+const normalizeBranch = (value) => {
+    const text = String(value || "")
+        .toLowerCase()
+        .replace(/&/g, " and ")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim()
+        .replace(/\s+/g, " ");
+
+    const aliases = {
+        "cse": "CSE",
+        "computer science": "CSE",
+        "computer science engineering": "CSE",
+        "computer science and engineering": "CSE",
+        "cs": "CSE",
+        "it": "IT",
+        "information technology": "IT",
+        "eee": "EEE",
+        "electrical electronics": "EEE",
+        "electrical and electronics": "EEE",
+        "electrical and electronics engineering": "EEE",
+        "electrical electronics engineering": "EEE",
+        "ece": "ECE",
+        "electronics and communication": "ECE",
+        "electronics and communication engineering": "ECE",
+        "electronics communication engineering": "ECE",
+        "ce": "CE",
+        "computer engineering": "CE",
+        "computer engineering technology": "CE",
+        "civil": "CIVIL",
+        "civil engineering": "CIVIL",
+        "me": "ME",
+        "mechanical": "ME",
+        "mechanical engineering": "ME",
+        "ee": "EE",
+        "electrical engineering": "EE",
+        "electrical": "EE",
+        "ai": "AI",
+        "artificial intelligence": "AI",
+        "aiml": "AIML",
+        "ai ml": "AIML",
+        "artificial intelligence and machine learning": "AIML",
+        "ds": "DS",
+        "data science": "DS",
+        "cs ds": "CSD",
+        "computer science and data science": "CSD",
+        "cs ai": "CSAI",
+        "computer science and artificial intelligence": "CSAI",
+        "iot": "IOT",
+        "internet of things": "IOT",
+        "aids": "AIDS",
+        "artificial intelligence and data science": "AIDS",
+        "etc": "ETC",
+        "electronics and telecommunications": "ETC",
+        "electronics and telecommunications engineering": "ETC",
+        "chemical": "CHEMICAL",
+        "chemical engineering": "CHEMICAL",
+        "biotech": "BIOTECH",
+        "biotechnology": "BIOTECH",
+        "biomedical": "BIOMEDICAL",
+        "biomedical engineering": "BIOMEDICAL",
+        "aero": "AERO",
+        "aerospace engineering": "AERO",
+        "aeronautical engineering": "AERO",
+        "production": "PRODUCTION",
+        "production engineering": "PRODUCTION",
+        "instrumentation": "INSTRUMENTATION",
+        "instrumentation engineering": "INSTRUMENTATION"
+    };
+
+    return aliases[text] || text.toUpperCase();
+};
+
+// Recruiters can enter several branches separated by commas, slashes, or semicolons.
+const parseRequiredBranches = (value) => {
+    if (!value || !String(value).trim()) return [];
+    return String(value)
+        .split(/[,;/|]+/)
+        .map((branch) => branch.trim())
+        .filter(Boolean)
+        .map(normalizeBranch);
+};
+
+const isBranchEligible = (studentBranch, requiredBranchesValue) => {
+    const requiredBranches = parseRequiredBranches(requiredBranchesValue);
+    if (requiredBranches.length === 0) return true;
+    if (!studentBranch || !String(studentBranch).trim()) return false;
+
+    // Student profiles normally store one branch; split defensively if a profile
+    // contains multiple values.
+    const studentBranches = parseRequiredBranches(studentBranch);
+    return studentBranches.some((branch) => requiredBranches.includes(branch));
+};
+
+
 // =====================================================
 // STUDENT: APPLY FOR JOB
 // POST /api/applications
@@ -252,13 +348,10 @@ const evaluateApplicants = async (req, res) => {
                     Number(student.cgpa) >= Number(job.min_cgpa)
                 );
 
-            const branchEligible =
-                !job.required_branch ||
-                (
-                    student.branch &&
-                    student.branch.toLowerCase() ===
-                    job.required_branch.toLowerCase()
-                );
+            const branchEligible = isBranchEligible(
+                student.branch,
+                job.required_branch
+            );
 
             const yearEligible =
                 !job.graduation_year ||
@@ -376,14 +469,6 @@ const autoShortlistApplicants = async (req, res) => {
 
         const job = jobs[0];
 
-        const limit = Number(req.body.limit);
-
-        if (!limit || limit < 1) {
-            return res.status(400).json({
-                message: "Valid shortlist limit is required"
-            });
-        }
-
         const [applicants] = await pool.execute(
             `
             SELECT
@@ -414,13 +499,10 @@ const autoShortlistApplicants = async (req, res) => {
                     Number(student.cgpa) >= Number(job.min_cgpa)
                 );
 
-            const branchEligible =
-                !job.required_branch ||
-                (
-                    student.branch &&
-                    student.branch.toLowerCase() ===
-                    job.required_branch.toLowerCase()
-                );
+            const branchEligible = isBranchEligible(
+                student.branch,
+                job.required_branch
+            );
 
             const yearEligible =
                 !job.graduation_year ||
@@ -494,7 +576,7 @@ const autoShortlistApplicants = async (req, res) => {
                 (a, b) => b.score - a.score
             );
 
-        const shortlisted = eligibleApplicants.slice(0, limit);
+        const shortlisted = eligibleApplicants;
 
         // Reset only active applications.
         // REJECTED applications must remain REJECTED.
@@ -522,7 +604,6 @@ const autoShortlistApplicants = async (req, res) => {
         return res.json({
             message: "Automatic shortlisting completed",
             jobId,
-            shortlistLimit: limit,
             totalApplicants: applicants.length,
             eligibleApplicants: eligibleApplicants.length,
             shortlisted
