@@ -6,7 +6,6 @@ function RecruiterEvaluate({ jobId }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [shortlistLimit, setShortlistLimit] = useState(1);
     const [shortlisting, setShortlisting] = useState(false);
     const [shortlistMessage, setShortlistMessage] = useState("");
 
@@ -73,18 +72,7 @@ function RecruiterEvaluate({ jobId }) {
             setShortlisting(true);
             setShortlistMessage("");
             setError("");
-
-            const limit = Number(shortlistLimit);
-
-            if (!Number.isInteger(limit) || limit < 1) {
-                setError(
-                    "Please enter a valid shortlist limit."
-                );
-                setShortlisting(false);
-                return;
-            }
-
-            const token = sessionStorage.getItem("token");
+const token = sessionStorage.getItem("token");
 
             if (!token) {
                 window.location.href = "/login";
@@ -489,46 +477,14 @@ function RecruiterEvaluate({ jobId }) {
                                 Automatic Shortlisting
                             </h3>
 
-                            <p style={styles.description}>
-                                Select how many eligible
-                                applicants should be
-                                shortlisted automatically
-                                based on their evaluation
-                                score.
-                            </p>
+                            <p style={styles.description}>Automatically shortlist all eligible applicants based on their evaluation results.</p>
 
                             <div
                                 style={
                                     styles.shortlistControls
                                 }
                             >
-                                <div>
-                                    <label
-                                        style={
-                                            styles.inputLabel
-                                        }
-                                    >
-                                        Applicants to
-                                        shortlist
-                                    </label>
-
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        value={
-                                            shortlistLimit
-                                        }
-                                        onChange={(e) =>
-                                            setShortlistLimit(
-                                                e.target
-                                                    .value
-                                            )
-                                        }
-                                        style={
-                                            styles.limitInput
-                                        }
-                                    />
-                                </div>
+                                
 
                                 <button
                                     style={{
@@ -1333,27 +1289,6 @@ const styles = {
         alignItems: "flex-end",
         gap: "12px",
         flexWrap: "wrap",
-    },
-
-    inputLabel: {
-        display: "block",
-        color: "#667389",
-        fontSize: "9px",
-        fontWeight: "700",
-        marginBottom: "5px",
-    },
-
-    limitInput: {
-        width: "85px",
-        height: "38px",
-        padding: "0 10px",
-        border: "1px solid #d6deea",
-        borderRadius: "8px",
-        fontSize: "12px",
-        color: "#172033",
-        outline: "none",
-        boxSizing: "border-box",
-        background: "#ffffff",
     },
 
     primaryButton: {
