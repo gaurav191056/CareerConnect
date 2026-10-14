@@ -1756,3 +1756,187 @@
 .cc-show-all-button {
     min-height: 32px;
 }
+
+/* ==========================================
+STUDENT PROFILE
+========================================== */
+
+.cc-profile-section {
+scroll-margin-top: 96px;
+}
+
+.cc-profile-card {
+padding: 24px;
+background: #ffffff;
+border: 1px solid #e4eaf3;
+border-radius: 16px;
+box-shadow: 0 8px 24px rgba(23, 32, 51, 0.04);
+}
+
+.cc-profile-heading {
+display: flex;
+align-items: flex-start;
+gap: 14px;
+margin-bottom: 24px;
+}
+
+.cc-profile-icon {
+display: grid;
+place-items: center;
+width: 48px;
+height: 48px;
+flex-shrink: 0;
+border-radius: 13px;
+background: #edf3ff;
+color: #315dcc;
+font-size: 23px;
+}
+
+.cc-profile-heading h3 {
+margin: 0 0 6px;
+color: #172033;
+font-size: 19px;
+font-weight: 800;
+}
+
+.cc-profile-heading p {
+margin: 0;
+color: #69758a;
+font-size: 13px;
+line-height: 1.6;
+}
+
+.cc-profile-form {
+display: grid;
+grid-template-columns: repeat(2, minmax(0, 1fr));
+gap: 18px;
+}
+
+.cc-profile-field {
+display: flex;
+flex-direction: column;
+gap: 7px;
+min-width: 0;
+}
+
+.cc-profile-field.full-width {
+grid-column: 1 / -1;
+}
+
+.cc-profile-field label {
+color: #344054;
+font-size: 12px;
+font-weight: 800;
+}
+
+.cc-profile-field input,
+.cc-profile-field textarea {
+width: 100%;
+padding: 12px 13px;
+border: 1px solid #d7dfeb;
+border-radius: 9px;
+outline: none;
+background: #ffffff;
+color: #172033;
+font: inherit;
+font-size: 13px;
+transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cc-profile-field textarea {
+min-height: 100px;
+resize: vertical;
+}
+
+.cc-profile-field input:focus,
+.cc-profile-field textarea:focus {
+border-color: #557ce8;
+box-shadow: 0 0 0 3px rgba(85, 124, 232, 0.12);
+}
+
+.cc-profile-field input:disabled,
+.cc-profile-field textarea:disabled {
+background: #f5f7fb;
+cursor: not-allowed;
+}
+
+.cc-profile-hint {
+color: #7b8799;
+font-size: 11px;
+line-height: 1.5;
+}
+
+.cc-profile-message {
+grid-column: 1 / -1;
+padding: 11px 13px;
+border-radius: 9px;
+font-size: 13px;
+line-height: 1.5;
+}
+
+.cc-profile-message.success {
+background: #eaf8ef;
+color: #187343;
+}
+
+.cc-profile-message.error {
+background: #fff0f0;
+color: #b42318;
+}
+
+.cc-profile-actions {
+grid-column: 1 / -1;
+display: flex;
+justify-content: flex-end;
+margin-top: 4px;
+}
+
+.cc-profile-save-button {
+display: inline-flex;
+align-items: center;
+justify-content: center;
+gap: 9px;
+min-height: 44px;
+padding: 0 20px;
+border: 0;
+border-radius: 10px;
+background: #315dcc;
+color: #ffffff;
+font-size: 13px;
+font-weight: 800;
+cursor: pointer;
+transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.cc-profile-save-button:hover:not(:disabled) {
+background: #244db5;
+transform: translateY(-1px);
+}
+
+.cc-profile-save-button:disabled {
+opacity: 0.65;
+cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+.cc-profile-card {
+padding: 17px;
+}
+
+
+.cc-profile-form {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 15px;
+}
+
+.cc-profile-field.full-width,
+.cc-profile-message,
+.cc-profile-actions {
+    grid-column: 1;
+}
+
+.cc-profile-save-button {
+    width: 100%;
+}
+
+}

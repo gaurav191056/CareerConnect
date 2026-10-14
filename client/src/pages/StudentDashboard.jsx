@@ -4,6 +4,24 @@ import "./StudentDashboard.css";
 
 const API_URL = "https://careerconnect-api-nxj8.onrender.com";
 
+const parseRepeatableField = (value, blankEntry) => {
+    if (!value) return [{ ...blankEntry }];
+    if (Array.isArray(value)) return value.length ? value : [{ ...blankEntry }];
+    if (typeof value === "object") return [{ ...blankEntry, ...value }];
+    try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed.length ? parsed.map((item) => ({ ...blankEntry, ...(typeof item === "string" ? { description: item } : item) })) : [{ ...blankEntry }];
+    } catch { /* Older profiles may contain plain text; preserve it below. */ }
+    return [{ ...blankEntry, description: String(value) }];
+};
+
+const cleanRepeatableEntries = (entries) => entries.filter((entry) => Object.values(entry).some((value) => String(value || "").trim())).map((entry) => Object.fromEntries(Object.entries(entry).map(([key, value]) => [key, String(value || "").trim()])));
+
+const profileInputStyle = { width: "100%", boxSizing: "border-box", border: "1px solid #cbd5e1", borderRadius: "9px", padding: "10px 11px", fontSize: "14px", color: "#0f172a", background: "#fff" };
+const profileTextareaStyle = { ...profileInputStyle, resize: "vertical", fontFamily: "inherit" };
+const addButtonStyle = { border: "1px solid #2563eb", borderRadius: "9px", padding: "9px 12px", background: "#eff6ff", color: "#1d4ed8", fontWeight: 800, cursor: "pointer" };
+const removeButtonStyle = { justifySelf: "start", border: "1px solid #fecaca", borderRadius: "8px", padding: "7px 10px", background: "#fff1f2", color: "#be123c", fontWeight: 700, cursor: "pointer" };
+
 function StudentDashboard() {
     const navigate = useNavigate();
 
@@ -17,6 +35,34 @@ function StudentDashboard() {
     const [interviews, setInterviews] = useState([]);
     const [interviewHistory, setInterviewHistory] = useState([]);
     const [documents, setDocuments] = useState([]);
+
+    // ==========================================
+    // STUDENT PROFILE
+    // ==========================================
+
+    const emptyStudentProfile = {
+        phone: "",
+        college: "",
+        degree: "",
+        branch: "",
+        cgpa: "",
+        graduation_year: "",
+        skills: "",
+        projects: [{ name: "", description: "", link: "" }],
+        certifications: [{ name: "", issuer: "", link: "" }],
+        internships: [{ company: "", role: "", start_date: "", end_date: "", description: "" }],
+        resume_url: "",
+    };
+
+    const [studentProfile, setStudentProfile] = useState(emptyStudentProfile);
+    const [loadingProfile, setLoadingProfile] = useState(true);
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [profileError, setProfileError] = useState("");
+    const [profileMessage, setProfileMessage] = useState("");
+    const [profileSaved, setProfileSaved] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
+    const [profileDirty, setProfileDirty] = useState(false);
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
     const [loadingJobs, setLoadingJobs] = useState(true);
     const [loadingApplications, setLoadingApplications] = useState(true);
@@ -92,6 +138,277 @@ function StudentDashboard() {
     }, [navigate]);
 
     // ==========================================
+    // FETCH STUDENT PROFILE
+    // ==========================================
+
+    useEffect(() => {
+        const fetchStudentProfile = async () => {
+            const token = sessionStorage.getItem("token");
+
+            if (!token) {
+                window.location.href = "/login";
+                return;
+            }
+
+            try {
+                setLoadingProfile(true);
+                setProfileError("");
+
+                const response = await fetch(
+                    `${API_URL}/api/student/profile`,
+                    {
+                        method: "GET",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+
+                const data = await response.json();
+
+                if (response.status === 401) {
+                    sessionStorage.removeItem("token");
+                    sessionStorage.removeItem("user");
+                    window.location.href = "/login";
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.message || "Failed to load student profile"
+                    );
+                }
+
+                // The API may return the row directly or inside data.profile.
+                const profile = data.profile || data;
+                const hasProfile = profile && (
+                    profile.user_id || profile.phone || profile.college ||
+                    profile.degree || profile.branch || profile.skills
+                );
+
+                if (hasProfile) {
+                    setStudentProfile({
+                        ...emptyStudentProfile,
+                        ...profile,
+                        phone: profile.phone || "",
+                        college: profile.college || "",
+                        degree: profile.degree || "",
+                        branch: profile.branch || "",
+                        cgpa: profile.cgpa === null || profile.cgpa === undefined ? "" : String(profile.cgpa),
+                        graduation_year: profile.graduation_year === null || profile.graduation_year === undefined ? "" : String(profile.graduation_year),
+                        skills: profile.skills || "",
+                        projects: parseRepeatableField(profile.projects, { name: "", description: "", link: "" }),
+                        certifications: parseRepeatableField(profile.certifications, { name: "", issuer: "", link: "" }),
+                        internships: parseRepeatableField(profile.internships, { company: "", role: "", start_date: "", end_date: "", description: "" }),
+                        resume_url: profile.resume_url || "",
+                    });
+                    setProfileSaved(true);
+                    setProfileDirty(false);
+                    setProfileMessage("Your saved profile has been loaded.");
+                } else {
+                    setStudentProfile(emptyStudentProfile);
+                    setProfileSaved(false);
+                    setProfileDirty(false);
+                }
+            } catch (err) {
+                console.error("FETCH STUDENT PROFILE ERROR:", err);
+                setProfileError(err.message || "Failed to load student profile");
+            } finally {
+                setLoadingProfile(false);
+            }
+        };
+
+        fetchStudentProfile();
+    }, []);
+
+    // ==========================================
+    // HANDLE PROFILE INPUT
+    // ==========================================
+
+    const handleProfileInputChange = (event) => {
+        const { name, value } = event.target;
+        setStudentProfile((previous) => ({
+            ...previous,
+            [name]: value,
+        }));
+        setProfileSaved(false);
+        setProfileDirty(true);
+        setProfileMessage("");
+    };
+
+    const updateRepeatableEntry = (field, index, key, value) => {
+        setStudentProfile((previous) => ({
+            ...previous,
+            [field]: previous[field].map((entry, i) => i === index ? { ...entry, [key]: value } : entry),
+        }));
+        setProfileSaved(false);
+        setProfileDirty(true);
+        setProfileMessage("");
+    };
+
+    const addRepeatableEntry = (field, blankEntry) => {
+        setStudentProfile((previous) => ({ ...previous, [field]: [...previous[field], { ...blankEntry }] }));
+        setProfileSaved(false);
+        setProfileDirty(true);
+    };
+
+    const removeRepeatableEntry = (field, index, blankEntry) => {
+        setStudentProfile((previous) => {
+            const remaining = previous[field].filter((_, i) => i !== index);
+            return { ...previous, [field]: remaining.length ? remaining : [{ ...blankEntry }] };
+        });
+        setProfileSaved(false);
+        setProfileDirty(true);
+        setProfileMessage("");
+    };
+
+    // ==========================================
+    // SAVE STUDENT PROFILE
+    // ==========================================
+
+    const saveStudentProfile = async (event, closeAfterSave = true) => {
+        event?.preventDefault();
+
+        const token = sessionStorage.getItem("token");
+        if (!token) {
+            window.location.href = "/login";
+            return;
+        }
+
+        setProfileError("");
+        setProfileMessage("");
+
+        const requiredFields = [
+            ["phone", "Phone number"],
+            ["college", "College / university"],
+            ["degree", "Degree"],
+            ["branch", "Branch / specialization"],
+            ["graduation_year", "Graduation year"],
+            ["skills", "Skills"],
+        ];
+
+        const missingField = requiredFields.find(([key]) =>
+            !String(studentProfile[key] || "").trim()
+        );
+
+        if (missingField) {
+            setProfileError(`${missingField[1]} is required.`);
+            return;
+        }
+
+        const graduationYear = Number(studentProfile.graduation_year);
+        if (!Number.isInteger(graduationYear) || graduationYear < 2000 || graduationYear > 2100) {
+            setProfileError("Please enter a valid graduation year (2000–2100).");
+            return;
+        }
+
+        if (studentProfile.cgpa !== "") {
+            const cgpa = Number(studentProfile.cgpa);
+            if (!Number.isFinite(cgpa) || cgpa < 0 || cgpa > 10) {
+                setProfileError("CGPA must be between 0 and 10.");
+                return;
+            }
+        }
+
+        if (studentProfile.resume_url.trim()) {
+            try {
+                const resumeUrl = new URL(studentProfile.resume_url.trim());
+                if (!["http:", "https:"].includes(resumeUrl.protocol)) {
+                    throw new Error("invalid protocol");
+                }
+            } catch {
+                setProfileError("Please enter a valid resume URL starting with https:// or http://.");
+                return;
+            }
+        }
+
+        try {
+            setSavingProfile(true);
+
+            const payload = {
+                ...studentProfile,
+                phone: studentProfile.phone.trim(),
+                college: studentProfile.college.trim(),
+                degree: studentProfile.degree.trim(),
+                branch: studentProfile.branch.trim(),
+                cgpa: studentProfile.cgpa === "" ? null : Number(studentProfile.cgpa),
+                graduation_year: graduationYear,
+                skills: studentProfile.skills.trim(),
+                projects: JSON.stringify(cleanRepeatableEntries(studentProfile.projects)),
+                certifications: JSON.stringify(cleanRepeatableEntries(studentProfile.certifications)),
+                internships: JSON.stringify(cleanRepeatableEntries(studentProfile.internships)),
+                resume_url: studentProfile.resume_url.trim(),
+            };
+
+            const response = await fetch(
+                `${API_URL}/api/student/profile`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify(payload),
+                }
+            );
+
+            const data = await response.json();
+
+            if (response.status === 401) {
+                sessionStorage.removeItem("token");
+                sessionStorage.removeItem("user");
+                window.location.href = "/login";
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error(data.message || "Failed to save student profile");
+            }
+
+            setProfileSaved(true);
+            setProfileDirty(false);
+            setProfileMessage(data.message || "Profile saved successfully. You can now apply for jobs.");
+            if (closeAfterSave) setProfileOpen(false);
+        } catch (err) {
+            console.error("SAVE STUDENT PROFILE ERROR:", err);
+            setProfileSaved(false);
+            setProfileError(err.message || "Failed to save student profile");
+        } finally {
+            setSavingProfile(false);
+        }
+    };
+
+    // ==========================================
+    // PROFILE TOGGLE
+    // ==========================================
+
+    const toggleStudentProfile = async () => {
+        if (!profileOpen) {
+            setProfileOpen(true);
+            window.setTimeout(() => {
+                document.getElementById("student-profile")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                });
+            }, 50);
+            return;
+        }
+
+        if (!profileDirty) {
+            setProfileOpen(false);
+            return;
+        }
+
+        const shouldSave = window.confirm(
+            "You have unsaved profile changes. Press OK to save and close, or Cancel to continue editing."
+        );
+
+        if (shouldSave) {
+            await saveStudentProfile({ preventDefault: () => {} }, true);
+        }
+    };
+
+    // ==========================================
     // OPEN DASHBOARD SECTION
     // ==========================================
 
@@ -100,6 +417,7 @@ function StudentDashboard() {
         dashboardTab,
         options = {}
     ) => {
+        if (sectionId === "student-profile") setProfileOpen(true);
         setActiveDashboardTab(dashboardTab);
 
         window.setTimeout(() => {
@@ -485,6 +803,21 @@ function StudentDashboard() {
 
         if (!token) {
             window.location.href = "/login";
+            return;
+        }
+
+        const requiredProfileValues = [
+            studentProfile.phone,
+            studentProfile.college,
+            studentProfile.degree,
+            studentProfile.branch,
+            studentProfile.graduation_year,
+            studentProfile.skills,
+        ];
+
+        if (!profileSaved || requiredProfileValues.some((value) => !String(value || "").trim())) {
+            alert("Please complete and save your student profile before applying for jobs.");
+            openDashboardSection("student-profile", "profile");
             return;
         }
 
@@ -1087,9 +1420,14 @@ function StudentDashboard() {
     // ==========================================
 
     const handleLogout = () => {
+        // Ask for confirmation before ending the student session.
+        setShowLogoutConfirm(true);
+    };
+
+    const confirmLogout = () => {
         sessionStorage.removeItem("token");
         sessionStorage.removeItem("user");
-
+        setShowLogoutConfirm(false);
         window.location.href = "/login";
     };
 
@@ -1307,27 +1645,85 @@ function StudentDashboard() {
                         </div>
                     </div>
 
+                    <nav
+                        aria-label="Student dashboard navigation"
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "8px",
+                            flex: "1 1 auto",
+                            flexWrap: "wrap",
+                            margin: "0 16px",
+                        }}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => openDashboardSection("student-documents", "documents")}
+                            style={{
+                                border: "1px solid #2563eb",
+                                borderRadius: "9px",
+                                padding: "9px 11px",
+                                background: "#2563eb",
+                                color: "#fff",
+                                fontSize: "13px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            Resume Upload
+                        </button>
+                        {[
+                            { label: "My Applications", id: "my-applications", tab: "applications" },
+                            { label: "My Interviews", id: "my-interviews", tab: "interviews" },
+                            { label: "Interview History", id: "interview-history", tab: "interview-history" },
+                        ].map((item) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => openDashboardSection(item.id, item.tab)}
+                                style={{
+                                    border: "1px solid #dbe3ef",
+                                    borderRadius: "9px",
+                                    padding: "9px 11px",
+                                    background: "#fff",
+                                    color: "#24324a",
+                                    fontSize: "13px",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    whiteSpace: "nowrap",
+                                }}
+                            >
+                                {item.label}
+                            </button>
+                        ))}
+                    </nav>
+
                     <div className="cc-header-right">
 
-                        <div className="cc-user-info">
-                            <div className="cc-avatar">
-                                {user.name
-                                    ? user.name
-                                          .charAt(0)
-                                          .toUpperCase()
-                                    : "S"}
-                            </div>
-
-                            <div className="cc-user-text">
-                                <strong>
-                                    {user.name}
-                                </strong>
-
-                                <span>
-                                    Student
-                                </span>
-                            </div>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={toggleStudentProfile}
+                            aria-label={profileOpen ? "Close student profile" : "Open student profile"}
+                            title={profileOpen ? "Close student profile" : "Student profile"}
+                            style={{
+                                width: "42px",
+                                height: "42px",
+                                minWidth: "42px",
+                                borderRadius: "50%",
+                                border: "1px solid #cbd5e1",
+                                background: "#eff6ff",
+                                color: "#1d4ed8",
+                                fontSize: "20px",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                            }}
+                        >
+                            ♙
+                        </button>
 
                         <button
                             type="button"
@@ -1341,6 +1737,62 @@ function StudentDashboard() {
                     </div>
                 </div>
             </header>
+
+            {showLogoutConfirm && (
+                <div
+                    role="presentation"
+                    onClick={() => setShowLogoutConfirm(false)}
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        zIndex: 10000,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "20px",
+                        background: "rgba(15, 23, 42, 0.48)",
+                    }}
+                >
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="logout-confirm-title"
+                        onClick={(event) => event.stopPropagation()}
+                        style={{
+                            width: "100%",
+                            maxWidth: "400px",
+                            padding: "24px",
+                            borderRadius: "16px",
+                            background: "#ffffff",
+                            boxShadow: "0 20px 60px rgba(15, 23, 42, 0.25)",
+                            textAlign: "center",
+                        }}
+                    >
+                        <h2 id="logout-confirm-title" style={{ margin: "0 0 10px", color: "#0f172a", fontSize: "21px" }}>
+                            Are you sure for logout?
+                        </h2>
+                        <p style={{ margin: "0 0 22px", color: "#64748b", fontSize: "14px" }}>
+                            Do you want to log out of CareerConnect?
+                        </p>
+                        <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
+                            <button
+                                type="button"
+                                onClick={confirmLogout}
+                                style={{ border: "none", borderRadius: "9px", padding: "10px 24px", background: "#2563eb", color: "#ffffff", fontWeight: 700, cursor: "pointer" }}
+                            >
+                                Yes
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowLogoutConfirm(false)}
+                                style={{ border: "1px solid #cbd5e1", borderRadius: "9px", padding: "10px 24px", background: "#ffffff", color: "#334155", fontWeight: 700, cursor: "pointer" }}
+                            >
+                                No
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* =====================================
                 MAIN CONTENT
@@ -1386,6 +1838,139 @@ function StudentDashboard() {
                     </div>
 
                 </section>
+
+                {/* =================================
+                    STUDENT PROFILE
+                ================================= */}
+                {profileOpen && (
+                <section
+                    id="student-profile"
+                    className="cc-section cc-dashboard-anchor"
+                    style={{
+                        background: "#ffffff",
+                        border: "1px solid #e5eaf2",
+                        borderRadius: "18px",
+                        padding: "24px",
+                        marginTop: "24px",
+                        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.05)",
+                    }}
+                >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", flexWrap: "wrap", marginBottom: "20px" }}>
+                        <div>
+                            <div style={{ color: "#2563eb", fontSize: "12px", fontWeight: 800, letterSpacing: "1.2px", marginBottom: "7px" }}>
+                                YOUR CAREER PROFILE
+                            </div>
+                            <h2 style={{ margin: "0 0 8px", color: "#172033", fontSize: "24px" }}>
+                                Student Profile
+                            </h2>
+                            <p style={{ margin: 0, color: "#64748b", lineHeight: 1.6 }}>
+                                Add your education and skills so recruiters can understand your background.
+                            </p>
+                        </div>
+                        <span style={{ padding: "7px 12px", borderRadius: "999px", background: profileSaved ? "#dcfce7" : "#fff7ed", color: profileSaved ? "#166534" : "#9a3412", fontSize: "12px", fontWeight: 800 }}>
+                            {profileSaved ? "✓ Profile saved" : "Profile incomplete"}
+                        </span>
+                    </div>
+
+                    {loadingProfile ? (
+                        <p style={{ color: "#64748b" }}>Loading your profile…</p>
+                    ) : (
+                        <form onSubmit={saveStudentProfile}>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+                                {[
+                                    { name: "phone", label: "Phone number *", type: "tel", placeholder: "Your contact number", required: true },
+                                    { name: "college", label: "College / university *", type: "text", placeholder: "College name", required: true },
+                                    { name: "degree", label: "Degree *", type: "text", placeholder: "e.g. B.Tech, B.Sc, MCA", required: true },
+                                    { name: "branch", label: "Branch / specialization *", type: "text", placeholder: "e.g. Computer Science", required: true },
+                                    { name: "cgpa", label: "CGPA (out of 10)", type: "number", placeholder: "e.g. 8.5", required: false },
+                                    { name: "graduation_year", label: "Graduation year *", type: "number", placeholder: "e.g. 2027", required: true },
+                                    { name: "resume_url", label: "Resume URL", type: "url", placeholder: "https://…", required: false },
+                                ].map((field) => (
+                                    <label key={field.name} style={{ display: "flex", flexDirection: "column", gap: "7px", color: "#334155", fontSize: "13px", fontWeight: 700 }}>
+                                        {field.label}
+                                        <input
+                                            name={field.name}
+                                            type={field.type}
+                                            value={studentProfile[field.name] || ""}
+                                            onChange={handleProfileInputChange}
+                                            placeholder={field.placeholder}
+                                            required={field.required}
+                                            min={field.name === "cgpa" ? "0" : field.name === "graduation_year" ? "2000" : undefined}
+                                            max={field.name === "cgpa" ? "10" : field.name === "graduation_year" ? "2100" : undefined}
+                                            step={field.name === "cgpa" ? "0.01" : undefined}
+                                            style={{ width: "100%", boxSizing: "border-box", border: "1px solid #cbd5e1", borderRadius: "10px", padding: "11px 12px", fontSize: "14px", color: "#0f172a", background: "#fff", outlineOffset: "2px" }}
+                                        />
+                                    </label>
+                                ))}
+
+                                <label style={{ display: "flex", flexDirection: "column", gap: "7px", color: "#334155", fontSize: "13px", fontWeight: 700, gridColumn: "1 / -1" }}>
+                                    Skills *
+                                    <textarea name="skills" value={studentProfile.skills || ""} onChange={handleProfileInputChange} placeholder="e.g. JavaScript, React, SQL" rows={3} required style={{ width: "100%", boxSizing: "border-box", border: "1px solid #cbd5e1", borderRadius: "10px", padding: "11px 12px", fontSize: "14px", color: "#0f172a", background: "#fff", resize: "vertical", fontFamily: "inherit" }} />
+                                </label>
+
+                                <div style={{ gridColumn: "1 / -1", borderTop: "1px solid #e2e8f0", paddingTop: "18px" }}>
+                                    <h3 style={{ margin: "0 0 12px", color: "#172033" }}>Projects</h3>
+                                    {studentProfile.projects.map((entry, index) => (
+                                        <div key={index} style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px", marginBottom: "12px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                                            {[{ key: "name", label: "Project Name", placeholder: "e.g. CareerConnect" }, { key: "link", label: "Project Link (optional)", placeholder: "https://…" }].map((f) => <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", fontWeight: 700, color: "#334155" }}>{f.label}<input value={entry[f.key] || ""} onChange={(e) => updateRepeatableEntry("projects", index, f.key, e.target.value)} placeholder={f.placeholder} style={profileInputStyle} /></label>)}
+                                            <label style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", fontWeight: 700, color: "#334155" }}>Description<textarea value={entry.description || ""} onChange={(e) => updateRepeatableEntry("projects", index, "description", e.target.value)} rows={2} placeholder="What did you build or contribute?" style={profileTextareaStyle} /></label>
+                                            {studentProfile.projects.length > 1 && <button type="button" onClick={() => removeRepeatableEntry("projects", index, { name: "", description: "", link: "" })} style={removeButtonStyle}>Remove project</button>}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => addRepeatableEntry("projects", { name: "", description: "", link: "" })} style={addButtonStyle}>+ Add Another Project</button>
+                                </div>
+
+                                <div style={{ gridColumn: "1 / -1", borderTop: "1px solid #e2e8f0", paddingTop: "18px" }}>
+                                    <h3 style={{ margin: "0 0 12px", color: "#172033" }}>Certifications</h3>
+                                    {studentProfile.certifications.map((entry, index) => (
+                                        <div key={index} style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px", marginBottom: "12px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                                            {[{ key: "name", label: "Certificate Name", placeholder: "e.g. React Basics" }, { key: "issuer", label: "Issuing Organization", placeholder: "e.g. Coursera" }, { key: "link", label: "Certificate Link (optional)", placeholder: "https://…" }].map((f) => <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", fontWeight: 700, color: "#334155" }}>{f.label}<input value={entry[f.key] || ""} onChange={(e) => updateRepeatableEntry("certifications", index, f.key, e.target.value)} placeholder={f.placeholder} style={profileInputStyle} /></label>)}
+                                            {studentProfile.certifications.length > 1 && <button type="button" onClick={() => removeRepeatableEntry("certifications", index, { name: "", issuer: "", link: "" })} style={removeButtonStyle}>Remove certificate</button>}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => addRepeatableEntry("certifications", { name: "", issuer: "", link: "" })} style={addButtonStyle}>+ Add Another Certificate</button>
+                                </div>
+
+                                <div style={{ gridColumn: "1 / -1", borderTop: "1px solid #e2e8f0", paddingTop: "18px" }}>
+                                    <h3 style={{ margin: "0 0 12px", color: "#172033" }}>Internships / Experience</h3>
+                                    {studentProfile.internships.map((entry, index) => (
+                                        <div key={index} style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px", marginBottom: "12px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                                            {[{ key: "company", label: "Company Name", placeholder: "Company name" }, { key: "role", label: "Role / Job Title", placeholder: "e.g. Web Development Intern" }, { key: "start_date", label: "Start Date", placeholder: "MM/YYYY" }, { key: "end_date", label: "End Date", placeholder: "MM/YYYY or Present" }].map((f) => <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", fontWeight: 700, color: "#334155" }}>{f.label}<input value={entry[f.key] || ""} onChange={(e) => updateRepeatableEntry("internships", index, f.key, e.target.value)} placeholder={f.placeholder} style={profileInputStyle} /></label>)}
+                                            <label style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", fontWeight: 700, color: "#334155" }}>Description / Work Done<textarea value={entry.description || ""} onChange={(e) => updateRepeatableEntry("internships", index, "description", e.target.value)} rows={2} placeholder="What did you work on and learn?" style={profileTextareaStyle} /></label>
+                                            {studentProfile.internships.length > 1 && <button type="button" onClick={() => removeRepeatableEntry("internships", index, { company: "", role: "", start_date: "", end_date: "", description: "" })} style={removeButtonStyle}>Remove internship</button>}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => addRepeatableEntry("internships", { company: "", role: "", start_date: "", end_date: "", description: "" })} style={addButtonStyle}>+ Add Another Internship</button>
+                                </div>
+                            </div>
+
+                            {profileError && (
+                                <div role="alert" style={{ marginTop: "16px", padding: "11px 13px", borderRadius: "10px", background: "#fef2f2", color: "#b91c1c", fontSize: "14px" }}>
+                                    {profileError}
+                                </div>
+                            )}
+                            {profileMessage && !profileError && (
+                                <div role="status" style={{ marginTop: "16px", padding: "11px 13px", borderRadius: "10px", background: "#f0fdf4", color: "#166534", fontSize: "14px" }}>
+                                    {profileMessage}
+                                </div>
+                            )}
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginTop: "20px" }}>
+                                <button
+                                    type="submit"
+                                    disabled={savingProfile}
+                                    style={{ border: 0, borderRadius: "10px", padding: "12px 18px", background: savingProfile ? "#94a3b8" : "#2563eb", color: "#fff", fontSize: "14px", fontWeight: 800, cursor: savingProfile ? "wait" : "pointer" }}
+                                >
+                                    {savingProfile ? "Saving profile…" : "Save Student Profile"}
+                                </button>
+                                <span style={{ color: "#64748b", fontSize: "12px" }}>
+                                    * Required fields. Save your profile before applying for jobs.
+                                </span>
+                            </div>
+                        </form>
+                    )}
+                </section>
+                )}
 
                 {/* =================================
                     STATS / CLICKABLE TABS
@@ -2080,7 +2665,7 @@ function StudentDashboard() {
                     DOCUMENTS
                 ================================= */}
 
-                <section className="cc-section cc-documents-section">
+                <section id="student-documents" className="cc-section cc-documents-section cc-dashboard-anchor">
 
                     <div className="cc-section-header">
 
@@ -2716,7 +3301,7 @@ function StudentDashboard() {
                     INTERVIEW HISTORY
                 ================================= */}
 
-                <section className="cc-section cc-interview-history-section">
+                <section id="interview-history" className="cc-section cc-interview-history-section cc-dashboard-anchor">
 
                     <div className="cc-section-header">
 

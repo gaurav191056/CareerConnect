@@ -22,6 +22,18 @@ function RecruiterDashboard() {
   const [deletingJobId, setDeletingJobId] = useState(null);
   const [savingJob, setSavingJob] = useState(false);
   const [jobForm, setJobForm] = useState({ ...EMPTY_FORM });
+  const [showCompanyInfo, setShowCompanyInfo] = useState(false);
+  const [recruiterProfile, setRecruiterProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileForm, setProfileForm] = useState({
+    company_name: "",
+    company_email: "",
+    company_website: "",
+    company_description: "",
+  });
+  const [editingProfile, setEditingProfile] = useState(false);
 
   const token = sessionStorage.getItem("token");
 
@@ -43,6 +55,23 @@ function RecruiterDashboard() {
 
   const isRecruiter =
     user?.role?.toUpperCase() === "RECRUITER";
+
+  // Ownership is determined from the job row returned by the API.
+  // If the API omits an owner id, treat the job as read-only (safe default).
+  const isMyJob = (job) => {
+    const ownerId =
+      job?.recruiter_id ??
+      job?.recruiterId ??
+      job?.user_id ??
+      job?.userId ??
+      job?.created_by ??
+      job?.createdBy ??
+      job?.posted_by ??
+      job?.postedBy;
+
+    return ownerId !== null && ownerId !== undefined &&
+      String(ownerId) === String(user?.id);
+  };
 
   // =========================
   // FETCH JOBS
@@ -99,6 +128,104 @@ function RecruiterDashboard() {
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
+
+  // Load the company profile belonging to the logged-in recruiter.
+  const fetchRecruiterProfile = useCallback(async () => {
+    if (!token) {
+      setProfileLoading(false);
+      return;
+    }
+
+    try {
+      setProfileLoading(true);
+      setProfileError("");
+      const response = await fetch(`${API_URL}/recruiter/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      // A 404 / empty profile means this recruiter still needs to complete it.
+      if (response.status === 404 || data.profile === null) {
+        setRecruiterProfile(null);
+        setEditingProfile(true);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(data.message || data.error || "Could not load company profile");
+      }
+
+      const profile = data.profile || data.recruiterProfile || data;
+      if (!profile?.company_name) {
+        setRecruiterProfile(null);
+        setEditingProfile(true);
+        return;
+      }
+      setRecruiterProfile(profile);
+      setProfileForm({
+        company_name: profile.company_name || "",
+        company_email: profile.company_email || "",
+        company_website: profile.company_website || "",
+        company_description: profile.company_description || "",
+      });
+      setEditingProfile(false);
+    } catch (err) {
+      console.error("FETCH RECRUITER PROFILE ERROR:", err);
+      setProfileError(err.message || "Could not load company profile");
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchRecruiterProfile();
+  }, [fetchRecruiterProfile]);
+
+  const handleProfileChange = (event) => {
+    const { name, value } = event.target;
+    setProfileForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const saveRecruiterProfile = async (event) => {
+    event.preventDefault();
+    setProfileError("");
+    if (!profileForm.company_name.trim()) {
+      setProfileError("Please enter your company name.");
+      return;
+    }
+
+    try {
+      setProfileSaving(true);
+      const response = await fetch(`${API_URL}/recruiter/profile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          company_name: profileForm.company_name.trim(),
+          company_email: profileForm.company_email.trim(),
+          company_website: profileForm.company_website.trim(),
+          company_description: profileForm.company_description.trim(),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || data.error || "Could not save company profile");
+      }
+      await fetchRecruiterProfile();
+      setRecruiterProfile((current) => current || {
+        ...profileForm,
+        name: recruiterName,
+        email: user?.email || "",
+      });
+      setEditingProfile(false);
+      setShowCompanyInfo(false);
+    } catch (err) {
+      setProfileError(err.message || "Could not save company profile");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   // =========================
   // DYNAMIC STATISTICS
@@ -220,6 +347,11 @@ function RecruiterDashboard() {
   // =========================
 
   const openEditJob = (job) => {
+    if (!isMyJob(job)) {
+      alert("You can edit only jobs created by your account.");
+      return;
+    }
+
     setJobForm({
       title: job.title || "",
       description: job.description || "",
@@ -257,7 +389,14 @@ function RecruiterDashboard() {
   const updateJob = async (e) => {
     e.preventDefault();
 
-    if (!editingJobId) {
+    const jobBeingEdited = jobs.find((job) => String(job.id) === String(editingJobId));
+    if (!jobBeingEdited || !isMyJob(jobBeingEdited)) {
+      alert("You can update only jobs created by your account.");
+      closeJobForm();
+      return;
+    }
+
+    if (editingJobId === null || editingJobId === undefined) {
       return;
     }
 
@@ -314,6 +453,12 @@ function RecruiterDashboard() {
   // =========================
 
   const deleteJob = async (jobId) => {
+    const jobToDelete = jobs.find((job) => String(job.id) === String(jobId));
+    if (!jobToDelete || !isMyJob(jobToDelete)) {
+      alert("You can delete only jobs created by your account.");
+      return;
+    }
+
     const confirmed = window.confirm(
       "Are you sure you want to delete this job? This action cannot be undone."
     );
@@ -351,11 +496,11 @@ function RecruiterDashboard() {
 
       setJobs((currentJobs) =>
         currentJobs.filter(
-          (job) => job.id !== jobId
+          (job) => String(job.id) !== String(jobId)
         )
       );
 
-      if (editingJobId === jobId) {
+      if (String(editingJobId) === String(jobId)) {
         closeJobForm();
       }
     } catch (err) {
@@ -369,25 +514,31 @@ function RecruiterDashboard() {
     }
   };
 
+  
   // =========================
   // NAVIGATION
   // =========================
 
   const handleLogout = () => {
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("user");
+  const confirmed = window.confirm(
+    "Are you sure you want to logout?"
+  );
 
-    window.location.href = "/login";
-  };
+  if (!confirmed) {
+    return;
+  }
+
+  sessionStorage.removeItem("token");
+  sessionStorage.removeItem("user");
+  window.location.href = "/login";
+};
 
   const goToApplicants = (jobId) => {
-    window.location.href =
-      `/recruiter/applicants/${jobId}`;
+    window.location.href = `/recruiter/applicants/${jobId}`;
   };
 
   const goToEvaluate = (jobId) => {
-    window.location.href =
-      `/recruiter/evaluate/${jobId}`;
+    window.location.href = `/recruiter/evaluate/${jobId}`;
   };
 
   // =========================
@@ -481,9 +632,17 @@ function RecruiterDashboard() {
 
           <div style={styles.headerRight}>
             <div style={styles.userInfo}>
-              <div style={styles.avatar}>
-                {recruiterInitial}
-              </div>
+              <button
+                type="button"
+                style={styles.avatarButton}
+                onClick={() => setShowCompanyInfo(true)}
+                aria-label="View your company information"
+                title="View company information"
+              >
+                <span style={styles.avatar}>
+                  {recruiterInitial}
+                </span>
+              </button>
 
               <div style={styles.userDetails}>
                 <strong>
@@ -504,9 +663,76 @@ function RecruiterDashboard() {
         </div>
       </header>
 
+      {showCompanyInfo && recruiterProfile && !editingProfile && (
+        <div
+          style={styles.companyModalOverlay}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setShowCompanyInfo(false);
+          }}
+        >
+          <section style={styles.companyModal} role="dialog" aria-modal="true" aria-labelledby="company-info-title">
+            <div style={styles.companyModalHeader}>
+              <div style={styles.companyModalAvatar}>
+                {(recruiterProfile.company_name || "C").charAt(0).toUpperCase()}
+              </div>
+              <button type="button" onClick={() => setShowCompanyInfo(false)} style={styles.companyModalClose} aria-label="Close company information">×</button>
+            </div>
+            <h2 id="company-info-title" style={styles.companyModalTitle}>{recruiterProfile.company_name}</h2>
+            <p style={styles.companyModalSubtitle}>Company information saved to your recruiter account</p>
+            <div style={styles.companyInfoList}>
+              <div style={styles.companyInfoRow}><span>Recruiter name</span><strong>{recruiterProfile.name || recruiterName}</strong></div>
+              <div style={styles.companyInfoRow}><span>Recruiter email</span><strong>{recruiterProfile.email || user?.email || "Not provided"}</strong></div>
+              <div style={styles.companyInfoRow}><span>Company email</span><strong>{recruiterProfile.company_email || "Not provided"}</strong></div>
+              <div style={styles.companyInfoRow}><span>Website</span><strong>{recruiterProfile.company_website || "Not provided"}</strong></div>
+              <div style={{ ...styles.companyInfoRow, flexDirection: "column", gap: "6px" }}><span>Description</span><strong style={{ fontWeight: 500, whiteSpace: "pre-wrap" }}>{recruiterProfile.company_description || "Not provided"}</strong></div>
+            </div>
+            <button type="button" style={styles.companyModalDone} onClick={() => { setProfileForm({ company_name: recruiterProfile.company_name || "", company_email: recruiterProfile.company_email || "", company_website: recruiterProfile.company_website || "", company_description: recruiterProfile.company_description || "" }); setEditingProfile(true); setShowCompanyInfo(false); }}>Edit company information</button>
+            <button type="button" style={{ ...styles.cancelButton, width: "100%", marginTop: "8px" }} onClick={() => setShowCompanyInfo(false)}>Close</button>
+          </section>
+        </div>
+      )}
+
       {/* MAIN */}
 
       <main style={styles.container}>
+        {(editingProfile || (!profileLoading && !recruiterProfile)) && (
+          <section style={styles.form}>
+            <div style={styles.formHeader}>
+              <div>
+                <div style={styles.formEyebrow}>{recruiterProfile ? "COMPANY PROFILE" : "SETUP REQUIRED"}</div>
+                <h2 style={styles.formTitle}>{recruiterProfile ? "Update company information" : "Complete your company profile"}</h2>
+                <p style={styles.formSubtitle}>Login ke baad company details ek baar bharein. Save karne ke baad ye details company icon par milengi.</p>
+              </div>
+            </div>
+            <form onSubmit={saveRecruiterProfile}>
+              <div style={styles.formGrid}>
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label} htmlFor="company_name">Company name *</label>
+                  <input id="company_name" name="company_name" value={profileForm.company_name} onChange={handleProfileChange} placeholder="e.g. ABC Technologies" required style={styles.input} />
+                </div>
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label} htmlFor="company_email">Company email</label>
+                  <input id="company_email" name="company_email" type="email" value={profileForm.company_email} onChange={handleProfileChange} placeholder="hr@company.com" style={styles.input} />
+                </div>
+                <div style={{ ...styles.fieldGroup, gridColumn: "1 / -1" }}>
+                  <label style={styles.label} htmlFor="company_website">Company website</label>
+                  <input id="company_website" name="company_website" type="url" value={profileForm.company_website} onChange={handleProfileChange} placeholder="https://www.company.com" style={styles.input} />
+                </div>
+                <div style={{ ...styles.fieldGroup, gridColumn: "1 / -1" }}>
+                  <label style={styles.label} htmlFor="company_description">Company description</label>
+                  <textarea id="company_description" name="company_description" value={profileForm.company_description} onChange={handleProfileChange} placeholder="Describe your company and what it does..." rows={4} style={{ ...styles.input, resize: "vertical", minHeight: "100px" }} />
+                </div>
+              </div>
+              {profileError && <p role="alert" style={{ ...styles.error, marginTop: "12px" }}>{profileError}</p>}
+              <div style={styles.formActions}>
+                {recruiterProfile && <button type="button" style={styles.cancelButton} onClick={() => { setEditingProfile(false); setProfileError(""); }}>Cancel</button>}
+                <button type="submit" disabled={profileSaving} style={styles.primaryButton}>{profileSaving ? "Saving..." : "Save Company Profile"}</button>
+              </div>
+            </form>
+          </section>
+        )}
+        {profileLoading && <p style={styles.sectionSubtitle}>Loading company profile...</p>}
+        {profileError && !editingProfile && <div role="alert" style={styles.error}>{profileError} <button type="button" style={styles.editButton} onClick={fetchRecruiterProfile}>Retry</button></div>}
         {/* HERO */}
 
         <section style={styles.hero}>
@@ -1002,7 +1228,8 @@ function RecruiterDashboard() {
                 .toUpperCase();
 
               const isDeleting =
-                deletingJobId === job.id;
+                String(deletingJobId) === String(job.id);
+              const canManageJob = isMyJob(job);
 
               return (
                 <div
@@ -1012,11 +1239,9 @@ function RecruiterDashboard() {
                   {/* CARD HEADER */}
 
                   <div style={styles.cardHeader}>
-                    <div style={styles.companyIcon}>
-                      {recruiterName
-                        .charAt(0)
-                        .toUpperCase()}
-                    </div>
+                    <button type="button" style={{ ...styles.companyIcon, border: "none", cursor: "pointer" }} onClick={() => { if (recruiterProfile) setShowCompanyInfo(true); else setEditingProfile(true); }} aria-label="Open company information" title="Open company information">
+                      {(recruiterProfile?.company_name || recruiterName).charAt(0).toUpperCase()}
+                    </button>
 
                     <div
                       style={
@@ -1026,9 +1251,8 @@ function RecruiterDashboard() {
                       <div
                         style={styles.companyName}
                       >
-                        {user?.company_name ||
-                          user?.company ||
-                          "CareerConnect Recruiter"}
+                        {recruiterProfile?.company_name ||
+                          "Complete company profile"}
                       </div>
 
                       <span
@@ -1189,56 +1413,48 @@ function RecruiterDashboard() {
                     </div>
                   </div>
 
-                  {/* ACTIONS */}
+                  {/* Only the job owner can manage applicants or change the job. */}
 
                   <div style={styles.actions}>
-                    <button
-                      style={
-                        styles.secondaryButton
-                      }
-                      onClick={() =>
-                        goToApplicants(job.id)
-                      }
-                      disabled={isDeleting}
-                    >
-                      View Applicants
-                      <span>→</span>
-                    </button>
+                    {canManageJob ? (
+                      <>
+                        <button
+                          style={styles.secondaryButton}
+                          onClick={() => goToApplicants(job.id)}
+                          disabled={isDeleting}
+                        >
+                          View Applicants <span>→</span>
+                        </button>
 
-                    <button
-                      style={
-                        styles.primaryOutlineButton
-                      }
-                      onClick={() =>
-                        goToEvaluate(job.id)
-                      }
-                      disabled={isDeleting}
-                    >
-                      Evaluate
-                      <span>✦</span>
-                    </button>
+                        <button
+                          style={styles.primaryOutlineButton}
+                          onClick={() => goToEvaluate(job.id)}
+                          disabled={isDeleting}
+                        >
+                          Evaluate <span>✦</span>
+                        </button>
 
-                    <button
-                      style={styles.editButton}
-                      onClick={() =>
-                        openEditJob(job)
-                      }
-                      disabled={isDeleting}
-                    >
-                      Edit Job
-                    </button>
+                        <button
+                          style={styles.editButton}
+                          onClick={() => openEditJob(job)}
+                          disabled={isDeleting}
+                        >
+                          Edit Job
+                        </button>
 
-                    <button
-                      style={styles.deleteButton}
-                      onClick={() =>
-                        deleteJob(job.id)
-                      }
-                      disabled={isDeleting}
-                    >
-                      {isDeleting
-                        ? "Deleting..."
-                        : "Delete Job"}
-                    </button>
+                        <button
+                          style={styles.deleteButton}
+                          onClick={() => deleteJob(job.id)}
+                          disabled={isDeleting}
+                        >
+                          {isDeleting ? "Deleting..." : "Delete Job"}
+                        </button>
+                      </>
+                    ) : (
+                      <div style={{ gridColumn: "1 / -1", color: "#64748b", fontSize: 12, padding: "10px 2px" }}>
+                        View only · Created by another recruiter
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1342,6 +1558,19 @@ const styles = {
     gap: "9px",
   },
 
+  avatarButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    border: "none",
+    borderRadius: "50%",
+    background: "transparent",
+    cursor: "pointer",
+    flexShrink: 0,
+    outlineOffset: "4px",
+  },
+
   avatar: {
     width: "34px",
     height: "34px",
@@ -1360,6 +1589,102 @@ const styles = {
     flexDirection: "column",
     gap: "1px",
     fontSize: "12px",
+  },
+
+  companyModalOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 1000,
+    background: "rgba(16, 24, 40, 0.55)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "20px",
+  },
+
+  companyModal: {
+    width: "100%",
+    maxWidth: "480px",
+    maxHeight: "90vh",
+    overflowY: "auto",
+    background: "#ffffff",
+    borderRadius: "20px",
+    padding: "26px",
+    boxShadow: "0 24px 70px rgba(16, 24, 40, 0.25)",
+    boxSizing: "border-box",
+  },
+
+  companyModalHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  companyModalAvatar: {
+    width: "54px",
+    height: "54px",
+    borderRadius: "50%",
+    background: "#eef4ff",
+    color: "#2563eb",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "21px",
+    fontWeight: "800",
+  },
+
+  companyModalClose: {
+    width: "36px",
+    height: "36px",
+    border: "1px solid #e4e7ec",
+    borderRadius: "10px",
+    background: "#ffffff",
+    color: "#667085",
+    fontSize: "25px",
+    lineHeight: 1,
+    cursor: "pointer",
+  },
+
+  companyModalTitle: {
+    margin: "18px 0 5px",
+    fontSize: "22px",
+    lineHeight: 1.3,
+    color: "#172033",
+    overflowWrap: "anywhere",
+  },
+
+  companyModalSubtitle: {
+    margin: "0 0 20px",
+    color: "#667085",
+    fontSize: "13px",
+    lineHeight: 1.5,
+  },
+
+  companyInfoList: {
+    borderTop: "1px solid #eaecf0",
+  },
+
+  companyInfoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "16px",
+    padding: "12px 0",
+    borderBottom: "1px solid #eaecf0",
+    fontSize: "13px",
+  },
+
+  companyModalDone: {
+    width: "100%",
+    marginTop: "20px",
+    padding: "12px 16px",
+    border: "none",
+    borderRadius: "10px",
+    background: "#2563eb",
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: "14px",
+    cursor: "pointer",
   },
 
   logoutButton: {
