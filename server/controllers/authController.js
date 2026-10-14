@@ -1,12 +1,13 @@
+
 const jwt = require("jsonwebtoken");
 const pool = require("../config/db");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
 
-const googleClient = new OAuth2Client(
-    process.env.GOOGLE_CLIENT_ID
-);
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const ADMIN_EMAIL = "gaurav1910@gmail.com";
 
 const createJwtToken = (user) => {
     return jwt.sign(
@@ -28,6 +29,23 @@ const formatUser = (user) => ({
     role: user.role
 });
 
+// Record successful logins for the designated admin account only.
+const recordAdminLogin = async (user, loginMethod) => {
+    if (
+        user.role !== "ADMIN" ||
+        user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
+    ) {
+        return;
+    }
+
+    await pool.execute(
+        `INSERT INTO admin_login_history
+            (user_id, email, login_method)
+         VALUES (?, ?, ?)`,
+        [user.id, user.email, loginMethod]
+    );
+};
+
 const registerUser = async (req, res) => {
     try {
         const { name, email, password, role } = req.body;
@@ -38,7 +56,7 @@ const registerUser = async (req, res) => {
             });
         }
 
-        const allowedRoles = ["STUDENT", "RECRUITER", "ADMIN"];
+        const allowedRoles = ["STUDENT", "RECRUITER"];
 
         if (!allowedRoles.includes(role)) {
             return res.status(400).json({
@@ -46,9 +64,11 @@ const registerUser = async (req, res) => {
             });
         }
 
+        const normalizedEmail = email.trim().toLowerCase();
+
         const [existingUser] = await pool.execute(
             "SELECT id FROM users WHERE email = ?",
-            [email]
+            [normalizedEmail]
         );
 
         if (existingUser.length > 0) {
@@ -57,25 +77,22 @@ const registerUser = async (req, res) => {
             });
         }
 
-        const hashedPassword = await bcrypt.hash(
-            password,
-            10
-        );
+        const hashedPassword = await bcrypt.hash(password, 10);
 
         const [result] = await pool.execute(
             `INSERT INTO users (name, email, password, role)
              VALUES (?, ?, ?, ?)`,
-            [name, email, hashedPassword, role]
+            [name.trim(), normalizedEmail, hashedPassword, role]
         );
 
-        res.status(201).json({
+        return res.status(201).json({
             message: "User registered successfully",
             userId: result.insertId
         });
     } catch (error) {
-        console.error(error);
+        console.error("REGISTER ERROR:", error.message);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Server error"
         });
     }
@@ -91,9 +108,11 @@ const loginUser = async (req, res) => {
             });
         }
 
+        const normalizedEmail = email.trim().toLowerCase();
+
         const [users] = await pool.execute(
             "SELECT * FROM users WHERE email = ?",
-            [email]
+            [normalizedEmail]
         );
 
         if (users.length === 0) {
@@ -115,17 +134,20 @@ const loginUser = async (req, res) => {
             });
         }
 
+        // Save the admin login event before responding.
+        await recordAdminLogin(user, "PASSWORD");
+
         const token = createJwtToken(user);
 
-        res.status(200).json({
+        return res.status(200).json({
             message: "Login successful",
             token,
             user: formatUser(user)
         });
     } catch (error) {
-        console.error(error);
+        console.error("LOGIN ERROR:", error.message);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Server error"
         });
     }
@@ -142,9 +164,7 @@ const googleLogin = async (req, res) => {
         }
 
         if (!process.env.GOOGLE_CLIENT_ID) {
-            console.error(
-                "GOOGLE_CLIENT_ID is not configured"
-            );
+            console.error("GOOGLE_CLIENT_ID is not configured");
 
             return res.status(500).json({
                 message: "Google login is not configured"
@@ -170,12 +190,9 @@ const googleLogin = async (req, res) => {
             });
         }
 
-        const email = payload.email;
-        const name =
-            payload.name ||
-            email.split("@")[0];
+        const email = payload.email.trim().toLowerCase();
+        const name = payload.name || email.split("@")[0];
 
-        // Check whether this email already exists
         const [existingUsers] = await pool.execute(
             "SELECT * FROM users WHERE email = ?",
             [email]
@@ -184,14 +201,10 @@ const googleLogin = async (req, res) => {
         let user;
 
         if (existingUsers.length > 0) {
-            // Existing CareerConnect account
+            // Preserve the role of an existing account.
             user = existingUsers[0];
         } else {
-            // New Google account
-            const allowedGoogleRoles = [
-                "STUDENT",
-                "RECRUITER"
-            ];
+            const allowedGoogleRoles = ["STUDENT", "RECRUITER"];
 
             if (!allowedGoogleRoles.includes(role)) {
                 return res.status(400).json({
@@ -200,28 +213,19 @@ const googleLogin = async (req, res) => {
                 });
             }
 
-            // users.password is NOT NULL in the current database.
-            // Generate a random password that the user does not know.
             const randomPassword = crypto
                 .randomBytes(32)
                 .toString("hex");
 
-            const hashedPassword =
-                await bcrypt.hash(
-                    randomPassword,
-                    10
-                );
+            const hashedPassword = await bcrypt.hash(
+                randomPassword,
+                10
+            );
 
             const [result] = await pool.execute(
-                `INSERT INTO users
-                 (name, email, password, role)
+                `INSERT INTO users (name, email, password, role)
                  VALUES (?, ?, ?, ?)`,
-                [
-                    name,
-                    email,
-                    hashedPassword,
-                    role
-                ]
+                [name, email, hashedPassword, role]
             );
 
             user = {
@@ -232,22 +236,20 @@ const googleLogin = async (req, res) => {
             };
         }
 
+        await recordAdminLogin(user, "GOOGLE");
+
         const token = createJwtToken(user);
 
-        res.status(200).json({
+        return res.status(200).json({
             message: "Google login successful",
             token,
             user: formatUser(user)
         });
     } catch (error) {
-        console.error(
-            "GOOGLE LOGIN ERROR:",
-            error.message
-        );
+        console.error("GOOGLE LOGIN ERROR:", error.message);
 
-        res.status(401).json({
-            message:
-                "Google authentication failed"
+        return res.status(401).json({
+            message: "Google authentication failed"
         });
     }
 };

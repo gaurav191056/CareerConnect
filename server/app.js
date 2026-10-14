@@ -9,6 +9,7 @@ const applicationRoutes = require("./routes/applicationRoutes");
 const documentRoutes = require("./routes/documentRoutes");
 const path = require("path");
 const interviewRoutes = require("./routes/interviewRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use("/api/jobs", jobRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/documents", documentRoutes);
 app.use("/api/interviews", interviewRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {
     res.json({
