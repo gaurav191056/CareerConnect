@@ -86,10 +86,7 @@ const token = sessionStorage.getItem("token");
                     headers: {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        limit,
-                    }),
+                    }
                 }
             );
 
