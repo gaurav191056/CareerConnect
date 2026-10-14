@@ -437,3 +437,93 @@
         display: none;
     }
 }
+
+
+.auth-mode-switch {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 5px;
+  border-radius: 10px;
+  background: #f0f2f8;
+}
+
+.auth-mode-button {
+  flex: 1;
+  padding: 11px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #5c6270;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.auth-mode-button.active {
+  background: #fff;
+  color: #4f46e5;
+  box-shadow: 0 2px 8px rgba(20, 25, 50, 0.08);
+}
+
+.auth-mode-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.form-group select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  color: #222;
+  font-size: 15px;
+}
+
+.form-group select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.google-login-section {
+  margin-top: 20px;
+  margin-bottom: 14px;
+}
+
+.google-role-label {
+  margin-bottom: 10px;
+  text-align: center;
+  color: #777;
+  font-size: 14px;
+}
+
+.google-role-group {
+  margin-bottom: 12px;
+}
+
+.google-divider {
+  margin: 10px 0;
+  text-align: center;
+  color: #888;
+  font-size: 13px;
+}
+
+.google-button-container {
+  display: flex;
+  justify-content: center;
+}
+
+.login-message.success {
+  color: #16753b;
+}
+
+.login-message.error {
+  color: #c62828;
+}
+
+.login-message.loading {
+  color: #4f46e5;
+}
