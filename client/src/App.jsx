@@ -33,6 +33,9 @@ function App() {
     }
 
     const path = window.location.pathname;
+    console.log("CURRENT PATH:", path);
+    console.log("SAVED USER:", user);
+    console.log("SAVED ROLE:", user?.role);
 
     // =========================
     // LOGIN PAGE
