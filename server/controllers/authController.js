@@ -7,7 +7,7 @@ const { OAuth2Client } = require("google-auth-library");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-const ADMIN_EMAIL = "gaurav1910@gmail.com";
+const ADMIN_EMAIL = "gaurav191056@gmail.com";
 
 const createJwtToken = (user) => {
     return jwt.sign(
