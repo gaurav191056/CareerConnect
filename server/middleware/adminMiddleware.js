@@ -1,7 +1,7 @@
 
 const pool = require("../config/db");
 
-const ADMIN_EMAIL = "gaurav1910@gmail.com";
+const ADMIN_EMAIL = "gaurav191056@gmail.com";
 
 const adminMiddleware = async (req, res, next) => {
     try {
