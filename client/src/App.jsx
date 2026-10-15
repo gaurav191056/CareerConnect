@@ -11,6 +11,8 @@ import RecruiterEvaluate from "./pages/RecruiterEvaluate";
 
 import RecruiterShortlisted from "./pages/RecruiterShortlisted";
 
+import ResetPassword from "./pages/ResetPassword";
+
 function App() {
 
     const token = sessionStorage.getItem("token");
@@ -48,6 +50,10 @@ function App() {
 
     }
 
+    // RESET PASSWORD PAGE
+    if (path === "/reset-password") {
+        return <ResetPassword />;
+    }
     // =========================
     // NOT LOGGED IN
     // =========================

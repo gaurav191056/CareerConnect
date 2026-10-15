@@ -527,3 +527,56 @@
 .login-message.loading {
   color: #4f46e5;
 }
+
+
+.login-message {
+    overflow-wrap: anywhere;
+}
+
+.login-message.success {
+    color: #16753b;
+}
+
+.login-message.error {
+    color: #c62828;
+}
+
+.login-message.loading {
+    color: #4f46e5;
+}
+
+.forgot-password-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: -10px;
+}
+
+.forgot-password-link {
+    padding: 4px 0;
+    border: none;
+    background: transparent;
+    color: #2563eb;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.forgot-password-link:hover {
+    color: #4f46e5;
+    text-decoration: underline;
+}
+
+.forgot-password-link:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.forgot-password-form {
+    margin-top: 8px;
+}
+
+.back-to-login {
+    display: block;
+    margin: 18px auto 0;
+}

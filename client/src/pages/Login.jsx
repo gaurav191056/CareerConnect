@@ -46,6 +46,7 @@ function Login() {
   const [messageKind, setMessageKind] = useState("error");
   const [googleReady, setGoogleReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const googleButtonRef = useRef(null);
   const roleRef = useRef(role);
@@ -61,9 +62,10 @@ function Login() {
   };
 
   const switchMode = (nextMode) => {
-    if (isLoading) return;
+    if (loadingRef.current) return;
 
     setMode(nextMode);
+    setShowForgotPassword(false);
     setPassword("");
     setConfirmPassword("");
     showMessage("");
@@ -88,17 +90,12 @@ function Login() {
     const dashboardPath = getDashboardPath(normalizedUser.role);
 
     if (!dashboardPath) {
-      showMessage(
-        `Unknown account role: ${String(user.role)}`
-      );
+      showMessage(`Unknown account role: ${String(user.role)}`);
       return;
     }
 
     sessionStorage.setItem("token", token);
-    sessionStorage.setItem(
-      "user",
-      JSON.stringify(normalizedUser)
-    );
+    sessionStorage.setItem("user", JSON.stringify(normalizedUser));
 
     showMessage("Login successful! Redirecting...", "success");
     window.location.replace(dashboardPath);
@@ -114,26 +111,21 @@ function Login() {
     showMessage("Logging in...", "loading");
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/auth/login`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: email.trim(),
-            password,
-          }),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+      });
 
       const data = await readJsonResponse(response);
 
       if (!response.ok) {
-        showMessage(
-          data?.message || "Invalid email or password."
-        );
+        showMessage(data?.message || "Invalid email or password.");
         return;
       }
 
@@ -141,8 +133,59 @@ function Login() {
     } catch (error) {
       console.error("LOGIN ERROR:", error);
       showMessage(
-        error.message ||
-          "Cannot connect to server. Please try again."
+        error.message || "Cannot connect to server. Please try again."
+      );
+    } finally {
+      loadingRef.current = false;
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (event) => {
+    event.preventDefault();
+
+    if (loadingRef.current) return;
+
+    if (!email.trim()) {
+      showMessage("Please enter your email address.");
+      return;
+    }
+
+    loadingRef.current = true;
+    setIsLoading(true);
+    showMessage("Sending reset link...", "loading");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/auth/forgot-password`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+          }),
+        }
+      );
+
+      const data = await readJsonResponse(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message || "Could not process your request."
+        );
+      }
+
+      showMessage(
+        data?.message ||
+          "If an account exists for this email, a password reset link will be sent.",
+        "success"
+      );
+    } catch (error) {
+      console.error("FORGOT PASSWORD ERROR:", error);
+      showMessage(
+        error.message || "Cannot connect to server. Please try again."
       );
     } finally {
       loadingRef.current = false;
@@ -160,8 +203,8 @@ function Login() {
       return;
     }
 
-    if (password.length < 8) {
-      showMessage("Password must be at least 8 characters long.");
+    if (password.length < 8 || password.length > 128) {
+      showMessage("Password must be between 8 and 128 characters.");
       return;
     }
 
@@ -182,32 +225,28 @@ function Login() {
     showMessage("Creating your account...", "loading");
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/auth/register`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: name.trim(),
-            email: email.trim(),
-            password,
-            role: selectedRole,
-          }),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          role: selectedRole,
+        }),
+      });
 
       const data = await readJsonResponse(response);
 
       if (!response.ok) {
-        showMessage(
-          data?.message || "Could not create your account."
-        );
+        showMessage(data?.message || "Could not create your account.");
         return;
       }
 
       setMode("SIGNIN");
+      setShowForgotPassword(false);
       setName("");
       setPassword("");
       setConfirmPassword("");
@@ -219,8 +258,7 @@ function Login() {
     } catch (error) {
       console.error("REGISTRATION ERROR:", error);
       showMessage(
-        error.message ||
-          "Cannot connect to server. Please try again."
+        error.message || "Cannot connect to server. Please try again."
       );
     } finally {
       loadingRef.current = false;
@@ -244,19 +282,16 @@ function Login() {
       showMessage("Signing in with Google...", "loading");
 
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/auth/google`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              credential,
-              role: normalizeRole(roleRef.current),
-            }),
-          }
-        );
+        const response = await fetch(`${API_BASE_URL}/auth/google`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            credential,
+            role: normalizeRole(roleRef.current),
+          }),
+        });
 
         const data = await readJsonResponse(response);
 
@@ -269,8 +304,7 @@ function Login() {
       } catch (error) {
         console.error("GOOGLE LOGIN ERROR:", error);
         showMessage(
-          error.message ||
-            "Cannot connect to server. Please try again."
+          error.message || "Cannot connect to server. Please try again."
         );
       } finally {
         loadingRef.current = false;
@@ -343,8 +377,7 @@ function Login() {
       initializeGoogle();
     } else {
       scriptElement = document.createElement("script");
-      scriptElement.src =
-        "https://accounts.google.com/gsi/client";
+      scriptElement.src = "https://accounts.google.com/gsi/client";
       scriptElement.async = true;
       scriptElement.defer = true;
       scriptElement.addEventListener("load", handleScriptLoad);
@@ -378,10 +411,12 @@ function Login() {
                 <span className="feature-icon">✓</span>
                 <span>Discover career opportunities</span>
               </div>
+
               <div className="brand-feature">
                 <span className="feature-icon">✓</span>
                 <span>Connect with recruiters</span>
               </div>
+
               <div className="brand-feature">
                 <span className="feature-icon">✓</span>
                 <span>Manage your placement journey</span>
@@ -392,210 +427,295 @@ function Login() {
 
         <div className="login-form-panel">
           <div className="login-card">
-            <div className="login-heading">
-              <p className="welcome-text">
-                {isSignup ? "Join CareerConnect" : "Welcome back"}
-              </p>
+            {!showForgotPassword ? (
+              <>
+                <div className="login-heading">
+                  <p className="welcome-text">
+                    {isSignup ? "Join CareerConnect" : "Welcome back"}
+                  </p>
 
-              <h2>
-                {isSignup
-                  ? "Create your account"
-                  : "Sign in to your account"}
-              </h2>
+                  <h2>
+                    {isSignup
+                      ? "Create your account"
+                      : "Sign in to your account"}
+                  </h2>
 
-              <p className="login-subtitle">
-                {isSignup
-                  ? "Get started with your placement journey"
-                  : "Access your CareerConnect dashboard"}
-              </p>
-            </div>
-
-            <div
-              className="auth-mode-switch"
-              aria-label="Choose authentication mode"
-            >
-              <button
-                type="button"
-                className={`auth-mode-button ${
-                  !isSignup ? "active" : ""
-                }`}
-                onClick={() => switchMode("SIGNIN")}
-                disabled={isLoading}
-              >
-                Sign In
-              </button>
-
-              <button
-                type="button"
-                className={`auth-mode-button ${
-                  isSignup ? "active" : ""
-                }`}
-                onClick={() => switchMode("SIGNUP")}
-                disabled={isLoading}
-              >
-                Create Account
-              </button>
-            </div>
-
-            <form
-              onSubmit={isSignup ? handleRegister : handleLogin}
-              className="login-form"
-            >
-              {isSignup && (
-                <div className="form-group">
-                  <label htmlFor="register-name">Full name</label>
-                  <input
-                    id="register-name"
-                    type="text"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="Enter your full name"
-                    autoComplete="name"
-                    required
-                    disabled={isLoading}
-                  />
+                  <p className="login-subtitle">
+                    {isSignup
+                      ? "Get started with your placement journey"
+                      : "Access your CareerConnect dashboard"}
+                  </p>
                 </div>
-              )}
 
-              <div className="form-group">
-                <label htmlFor="email">Email address</label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="Enter your email"
-                  autoComplete="email"
-                  required
-                  disabled={isLoading}
-                />
-              </div>
-
-              {isSignup && (
-                <div className="form-group">
-                  <label htmlFor="account-role">Account type</label>
-                  <select
-                    id="account-role"
-                    value={role}
-                    onChange={(event) =>
-                      setRole(normalizeRole(event.target.value))
-                    }
-                    required
+                <div
+                  className="auth-mode-switch"
+                  aria-label="Choose authentication mode"
+                >
+                  <button
+                    type="button"
+                    className={`auth-mode-button ${
+                      !isSignup ? "active" : ""
+                    }`}
+                    onClick={() => switchMode("SIGNIN")}
                     disabled={isLoading}
                   >
-                    <option value="STUDENT">Student</option>
-                    <option value="RECRUITER">Recruiter</option>
-                  </select>
-                </div>
-              )}
+                    Sign In
+                  </button>
 
-              <div className="form-group">
-                <label htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder={
-                    isSignup
-                      ? "Create a password (8+ characters)"
-                      : "Enter your password"
-                  }
-                  autoComplete={
-                    isSignup ? "new-password" : "current-password"
-                  }
-                  minLength={isSignup ? 8 : undefined}
-                  required
-                  disabled={isLoading}
-                />
-              </div>
-
-              {isSignup && (
-                <div className="form-group">
-                  <label htmlFor="confirm-password">
-                    Confirm password
-                  </label>
-                  <input
-                    id="confirm-password"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) =>
-                      setConfirmPassword(event.target.value)
-                    }
-                    placeholder="Enter your password again"
-                    autoComplete="new-password"
-                    minLength={8}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="login-button"
-                disabled={isLoading}
-              >
-                {isLoading
-                  ? isSignup
-                    ? "Creating account..."
-                    : "Signing in..."
-                  : isSignup
-                    ? "Create Account"
-                    : "Sign In"}
-              </button>
-            </form>
-
-            <div className="google-login-section">
-              <div className="google-role-label">
-                {isSignup
-                  ? "You can also create an account with Google"
-                  : "For a new Google account, choose a role"}
-              </div>
-
-              {!isSignup && (
-                <div className="form-group google-role-group">
-                  <label htmlFor="google-role">
-                    Role for a new Google account
-                  </label>
-                  <select
-                    id="google-role"
-                    value={role}
-                    onChange={(event) =>
-                      setRole(normalizeRole(event.target.value))
-                    }
+                  <button
+                    type="button"
+                    className={`auth-mode-button ${
+                      isSignup ? "active" : ""
+                    }`}
+                    onClick={() => switchMode("SIGNUP")}
                     disabled={isLoading}
                   >
-                    <option value="STUDENT">Student</option>
-                    <option value="RECRUITER">Recruiter</option>
-                  </select>
+                    Create Account
+                  </button>
                 </div>
-              )}
 
-              <div className="google-divider">
-                or continue with Google
-              </div>
+                <form
+                  onSubmit={isSignup ? handleRegister : handleLogin}
+                  className="login-form"
+                >
+                  {isSignup && (
+                    <div className="form-group">
+                      <label htmlFor="register-name">Full name</label>
+                      <input
+                        id="register-name"
+                        type="text"
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        placeholder="Enter your full name"
+                        autoComplete="name"
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
+                  )}
 
-              <div
-                id="google-signin-button"
-                ref={googleButtonRef}
-                className="google-button-container"
-                style={{
-                  minHeight: googleReady ? 40 : 0,
-                  pointerEvents: isLoading ? "none" : "auto",
-                  opacity: isLoading ? 0.7 : 1,
-                }}
-              />
-            </div>
+                  <div className="form-group">
+                    <label htmlFor="email">Email address</label>
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="Enter your email"
+                      autoComplete="email"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
 
-            {message && (
-              <div
-                className={`login-message ${messageKind}`}
-                role="status"
-                aria-live="polite"
-              >
-                {message}
-              </div>
+                  {isSignup && (
+                    <div className="form-group">
+                      <label htmlFor="account-role">Account type</label>
+                      <select
+                        id="account-role"
+                        value={role}
+                        onChange={(event) =>
+                          setRole(normalizeRole(event.target.value))
+                        }
+                        required
+                        disabled={isLoading}
+                      >
+                        <option value="STUDENT">Student</option>
+                        <option value="RECRUITER">Recruiter</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label htmlFor="password">Password</label>
+                    <input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(event) =>
+                        setPassword(event.target.value)
+                      }
+                      placeholder={
+                        isSignup
+                          ? "Create a password (8+ characters)"
+                          : "Enter your password"
+                      }
+                      autoComplete={
+                        isSignup ? "new-password" : "current-password"
+                      }
+                      minLength={isSignup ? 8 : undefined}
+                      maxLength={128}
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  {isSignup && (
+                    <div className="form-group">
+                      <label htmlFor="confirm-password">
+                        Confirm password
+                      </label>
+                      <input
+                        id="confirm-password"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(event) =>
+                          setConfirmPassword(event.target.value)
+                        }
+                        placeholder="Enter your password again"
+                        autoComplete="new-password"
+                        minLength={8}
+                        maxLength={128}
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
+                  )}
+
+                  {!isSignup && (
+                    <div className="forgot-password-row">
+                      <button
+                        type="button"
+                        className="forgot-password-link"
+                        onClick={() => {
+                          setShowForgotPassword(true);
+                          showMessage("");
+                        }}
+                        disabled={isLoading}
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="login-button"
+                    disabled={isLoading}
+                  >
+                    {isLoading
+                      ? isSignup
+                        ? "Creating account..."
+                        : "Signing in..."
+                      : isSignup
+                        ? "Create Account"
+                        : "Sign In"}
+                  </button>
+                </form>
+
+                <div className="google-login-section">
+                  <div className="google-role-label">
+                    {isSignup
+                      ? "You can also create an account with Google"
+                      : "For a new Google account, choose a role"}
+                  </div>
+
+                  {!isSignup && (
+                    <div className="form-group google-role-group">
+                      <label htmlFor="google-role">
+                        Role for a new Google account
+                      </label>
+                      <select
+                        id="google-role"
+                        value={role}
+                        onChange={(event) =>
+                          setRole(normalizeRole(event.target.value))
+                        }
+                        disabled={isLoading}
+                      >
+                        <option value="STUDENT">Student</option>
+                        <option value="RECRUITER">Recruiter</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="google-divider">
+                    or continue with Google
+                  </div>
+
+                  <div
+                    id="google-signin-button"
+                    ref={googleButtonRef}
+                    className="google-button-container"
+                    style={{
+                      minHeight: googleReady ? 40 : 0,
+                      pointerEvents: isLoading ? "none" : "auto",
+                      opacity: isLoading ? 0.7 : 1,
+                    }}
+                  />
+                </div>
+
+                {message && (
+                  <div
+                    className={`login-message ${messageKind}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {message}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="login-heading">
+                  <p className="welcome-text">Account Recovery</p>
+                  <h2>Forgot Password?</h2>
+                  <p className="login-subtitle">
+                    Enter your registered email address to request a
+                    password reset link.
+                  </p>
+                </div>
+
+                <form
+                  onSubmit={handleForgotPassword}
+                  className="login-form forgot-password-form"
+                >
+                  <div className="form-group">
+                    <label htmlFor="forgot-email">Email address</label>
+                    <input
+                      id="forgot-email"
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="Enter your registered email"
+                      autoComplete="email"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="login-button"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Sending..." : "Send Reset Link"}
+                  </button>
+                </form>
+
+                {message && (
+                  <div
+                    className={`login-message ${messageKind}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {message}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="forgot-password-link back-to-login"
+                  onClick={() => {
+                    if (loadingRef.current) return;
+                    setShowForgotPassword(false);
+                    showMessage("");
+                  }}
+                  disabled={isLoading}
+                >
+                  ← Back to Sign In
+                </button>
+              </>
             )}
 
             <div className="login-footer">
