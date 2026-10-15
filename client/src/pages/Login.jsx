@@ -18,6 +18,8 @@ function getDashboardPath(role) {
       return "/student/dashboard";
     case "RECRUITER":
       return "/recruiter/dashboard";
+    case "ADMIN":
+      return "/admin/dashboard";
     default:
       return null;
   }

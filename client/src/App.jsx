@@ -1,4 +1,5 @@
 import Login from "./pages/Login";
+import AdminDashboard from "./pages/AdminDashboard";
 
 import RecruiterDashboard from "./pages/RecruiterDashboard";
 
@@ -170,6 +171,23 @@ function App() {
     }
 
     // =========================
+    // ADMIN DASHBOARD
+    // =========================
+
+    if (
+
+        path === "/admin/dashboard" &&
+
+        user.role === "ADMIN"
+
+    ) {
+
+        return <AdminDashboard />;
+
+    }
+
+
+    // =========================
     // DEFAULT REDIRECT
     // =========================
 
@@ -184,6 +202,14 @@ function App() {
     if (user.role === "RECRUITER") {
 
         window.location.href = "/recruiter/dashboard";
+
+        return null;
+
+    }
+
+    if (user.role === "ADMIN") {
+
+        window.location.href = "/admin/dashboard";
 
         return null;
 
